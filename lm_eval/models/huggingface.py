@@ -459,6 +459,71 @@ class AutoCausalLM(HuggingFaceAutoLM):
             generations, max_context_size=inputs["input_ids"].size(1)
         )
 
+class LlamaForCausalLM(HuggingFaceAutoLM):
+    """Causal language modeling.
+    You can find a set of supported models in the HF documentation:
+    https://huggingface.co/docs/transformers/main/model_doc/auto#transformers.AutoModelForCausalLM
+    """
+
+    AUTO_CONFIG_CLASS: transformers.AutoConfig = transformers.LlamaConfig
+    AUTO_TOKENIZER_CLASS: transformers.AutoTokenizer = transformers.LlamaTokenizer
+    AUTO_MODEL_CLASS = transformers.LlamaForCausalLM
+    AUTO_PEFT_CLASS = peft.PeftModel
+
+    def _create_auto_tokenizer(
+        self,
+        *,
+        pretrained: str,
+        revision: str,
+        subfolder: str,
+        tokenizer: Optional[str] = None,
+    ) -> transformers.PreTrainedTokenizer:
+        tokenizer = super()._create_auto_tokenizer(
+            pretrained=pretrained,
+            revision=revision,
+            subfolder=subfolder,
+            tokenizer=tokenizer,
+        )
+        tokenizer.padding_side = "left"
+        return tokenizer
+
+    def _model_call(
+        self, inputs: TokenSequence, labels: Optional[TokenSequence] = None
+    ) -> TokenSequence:
+        return self.model(inputs)["logits"]
+
+    def _model_generate(
+        self,
+        inputs: transformers.BatchEncoding,
+        max_tokens: int,
+        stop: Optional[List[str]] = None,
+    ) -> TokenSequence:
+        # Ensure that the context does not encroach into the `space`
+        # for the generation.
+        input_ids = inputs["input_ids"][:, self.max_gen_toks - self.max_length :]
+        attention_mask = inputs["attention_mask"][
+            :, self.max_gen_toks - self.max_length :
+        ]
+        input_ids = input_ids.to(self.device)
+        attention_mask = attention_mask.to(self.device)
+
+        stopping_criteria = stop_sequences_criteria(
+            self.tokenizer, stop, input_ids.shape[1], input_ids.shape[0]
+        )
+
+        generations = self.model.generate(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            # GPT style models require the `generate` `max_length` arg to include the
+            # context length, so we instead set `max_new_tokens` which is the number
+            # of new tokens to generate, excluding the current number of tokens.
+            max_new_tokens=max_tokens,
+            stopping_criteria=stopping_criteria,
+            do_sample=False,
+        )
+        return utils.select_continuation_from_batch_left_padding(
+            generations, max_context_size=inputs["input_ids"].size(1)
+        )
 
 class AutoSeq2SeqLM(HuggingFaceAutoLM):
     """Seq2Seq language modeling.
