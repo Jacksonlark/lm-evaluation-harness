@@ -139,7 +139,8 @@ class HuggingFaceAutoLM(BaseLM):
         assert isinstance(batch_size, int)
         if (
             add_special_tokens is not None
-            and self.AUTO_MODEL_CLASS is transformers.AutoModelForCausalLM
+            and (self.AUTO_MODEL_CLASS is transformers.AutoModelForCausalLM or
+                 self.AUTO_MODEL_CLASS is transformers.LlamaForCausalLM)
         ):
             # TODO: Support evaluating causal models with special tokens. Currently,
             # this is not possible because the `_loglikelihood_tokens()` method for
@@ -275,6 +276,8 @@ class HuggingFaceAutoLM(BaseLM):
         if self._add_special_tokens is not None:
             return self._add_special_tokens
         elif self.AUTO_MODEL_CLASS is transformers.AutoModelForCausalLM:
+            return False
+        elif self.AUTO_MODEL_CLASS is transformers.LlamaForCausalLM:
             return False
         elif self.AUTO_MODEL_CLASS is transformers.AutoModelForSeq2SeqLM:
             return True
@@ -462,7 +465,7 @@ class AutoCausalLM(HuggingFaceAutoLM):
 class LlamaForCausalLM(HuggingFaceAutoLM):
     """Causal language modeling.
     You can find a set of supported models in the HF documentation:
-    https://huggingface.co/docs/transformers/main/model_doc/auto#transformers.AutoModelForCausalLM
+    https://huggingface.co/docs/transformers/main/model_doc/auto#transformers.LlamaForCausalLM
     """
 
     AUTO_CONFIG_CLASS: transformers.AutoConfig = transformers.LlamaConfig
